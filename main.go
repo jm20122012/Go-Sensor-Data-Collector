@@ -33,34 +33,34 @@ type SensorData struct {
 type WeatherStationResponseData []struct {
 	MacAddress string `json:"macAddress"`
 	LastData   struct {
-		DateUTC        int     `json:"dateutc"`
-		TempInf        float64 `json:"tempinf"`
-		HumidityIn     int     `json:"humidityin"`
-		BaromRelIn     float64 `json:"baromrelin"`
-		BaromAbsIn     float64 `json:"baromabsin"`
-		TempF          float64 `json:"tempf"`
-		BattOut        int     `json:"battout"`
-		Humidity       int     `json:"humidity"`
-		WindDir        int     `json:"winddir"`
-		WindSpeedMPH   float64 `json:"windspeedmph"`
-		WindGustMPH    float64 `json:"windgustmph"`
-		MaxDailyGust   float64 `json:"maxdailygust"`
-		HourlyRainIn   float64 `json:"hourlyrainin"`
-		EventRainIn    float64 `json:"eventrainin"`
-		DailyRainIn    float64 `json:"dailyrainin"`
-		WeeklyRainIn   float64 `json:"weeklyrainin"`
-		MonthlyRainIn  float64 `json:"monthlyrainin"`
-		TotalRainIn    float64 `json:"totalrainin"`
-		SolarRadiation float64 `json:"solarradiation"`
-		UV             float64 `json:"uv"`
-		BattCO2        int     `json:"batt_co2"`
-		FeelsLike      float64 `json:"feelsLike"`
-		DewPoint       float64 `json:"dewPoint"`
-		FeelsLikeIn    float64 `json:"feelsLikein"`
-		DewPointIn     float64 `json:"dewPointin"`
-		LastRain       string  `json:"lastRain"`
-		TZ             string  `json:"tz"`
-		Date           string  `json:"date"`
+		DateUTC                 int     `json:"dateutc"`
+		InsideTempF             float64 `json:"tempinf"`
+		InsideHumidity          int     `json:"humidityin"`
+		BarometricPressureRelIn float64 `json:"baromrelin"`
+		BarometricPressureAbsIn float64 `json:"baromabsin"`
+		OutsideTempF            float64 `json:"tempf"`
+		OutsideBattStatus       int     `json:"battout"`
+		OutsideHumidity         int     `json:"humidity"`
+		WindDirection           int     `json:"winddir"`
+		WindSpeedMPH            float64 `json:"windspeedmph"`
+		WindGustMPH             float64 `json:"windgustmph"`
+		MaxDailyGust            float64 `json:"maxdailygust"`
+		HourlyRainIn            float64 `json:"hourlyrainin"`
+		EventRainIn             float64 `json:"eventrainin"`
+		DailyRainIn             float64 `json:"dailyrainin"`
+		WeeklyRainIn            float64 `json:"weeklyrainin"`
+		MonthlyRainIn           float64 `json:"monthlyrainin"`
+		TotalRainIn             float64 `json:"totalrainin"`
+		SolarRadiation          float64 `json:"solarradiation"`
+		UVIndex                 float64 `json:"uv"`
+		BattCO2                 int     `json:"batt_co2"`
+		FeelsLikeOutside        float64 `json:"feelsLike"`
+		DewPointOutside         float64 `json:"dewPoint"`
+		FeelsLikeInside         float64 `json:"feelsLikein"`
+		DewPointInside          float64 `json:"dewPointin"`
+		LastRain                string  `json:"lastRain"`
+		TZ                      string  `json:"tz"`
+		Date                    string  `json:"date"`
 	} `json:"lastData"`
 	Info struct {
 		Name string `json:"name"`
@@ -111,7 +111,7 @@ func getAvtechData(avtechUrl string) (*AvtechResponseData, error) {
 	return &responseData, nil
 }
 
-func getWeatherStationData(apiUrl string) (*WeatherStationResponseData, error) {
+func getWeatherStationData(apiUrl string) (WeatherStationResponseData, error) {
 	resp, err := http.Get(apiUrl)
 	if err != nil {
 		log.Println("Error getting Ambient Weather Station API info: ", err)
@@ -128,7 +128,7 @@ func getWeatherStationData(apiUrl string) (*WeatherStationResponseData, error) {
 		return nil, err
 	}
 
-	return &responseData, nil
+	return responseData, nil
 }
 
 func avtechWorker(wg *sync.WaitGroup) {
@@ -191,10 +191,10 @@ func ambientWeatherStationWorker(wg *sync.WaitGroup) {
 	defer wg.Done()
 	// -------------------- Assign ENV Vars -------------------- //
 	ambientUrl := os.Getenv("AMBIENT_FULL_URL")
-	// influxUrl := os.Getenv("INFLUXDB_URL")
-	// influxToken := os.Getenv("INFLUXDB_API_TOKEN")
-	// influxBucket := os.Getenv("INFLUXDB_BUCKET")
-	// influxOrg := os.Getenv("INFLUXDB_ORG")
+	influxUrl := os.Getenv("INFLUXDB_URL")
+	influxToken := os.Getenv("INFLUXDB_API_TOKEN")
+	influxBucket := os.Getenv("INFLUXDB_BUCKET")
+	influxOrg := os.Getenv("INFLUXDB_ORG")
 
 	// // -------------------- InfluxDB Setup -------------------- //
 	// // Create a new client using an InfluxDB server base URL and an authentication token
@@ -208,11 +208,11 @@ func ambientWeatherStationWorker(wg *sync.WaitGroup) {
 	// // Create a new TLS configuration with certificate verification disabled
 	// // This is not recommended though.  Only use for testing until a new
 	// // TLS certificate can be created with SANs
-	// tlsConfig := &tls.Config{InsecureSkipVerify: true}
-	// influxClient := influxdb2.NewClientWithOptions(influxUrl, influxToken, influxdb2.DefaultOptions().SetTLSConfig(tlsConfig))
+	tlsConfig := &tls.Config{InsecureSkipVerify: true}
+	influxClient := influxdb2.NewClientWithOptions(influxUrl, influxToken, influxdb2.DefaultOptions().SetTLSConfig(tlsConfig))
 
 	// // Use blocking write client for writes to desired bucket
-	// writeAPI := influxClient.WriteAPIBlocking(influxOrg, influxBucket)
+	writeAPI := influxClient.WriteAPIBlocking(influxOrg, influxBucket)
 
 	data, err := getWeatherStationData(ambientUrl)
 	if err != nil {
@@ -220,7 +220,38 @@ func ambientWeatherStationWorker(wg *sync.WaitGroup) {
 	}
 
 	log.Println("Ambient Weather Data: ", data)
+	log.Printf("Temp F Val: %v - Type: %T", data[0].LastData.OutsideTempF, data[0].LastData.OutsideTempF)
+	p := influxdb2.NewPointWithMeasurement("weather_sensor_data").
+		AddTag("sensor_location", "outside_weather_station").
+		AddField("outside_temperature_f", data[0].LastData.OutsideTempF).
+		AddField("inside_temperature_f", data[0].LastData.InsideTempF).
+		AddField("barometric_pressure_absolute", data[0].LastData.BarometricPressureAbsIn).
+		AddField("barometric_pressure_relative", data[0].LastData.BarometricPressureRelIn).
+		AddField("humidity", float64(data[0].LastData.OutsideHumidity)).
+		AddField("wind_direction", float64(data[0].LastData.WindDirection)).
+		AddField("wind_speed_mph", data[0].LastData.WindSpeedMPH).
+		AddField("wind_gust_mph", data[0].LastData.WindGustMPH).
+		AddField("max_daily_gust", data[0].LastData.MaxDailyGust).
+		AddField("hourly_rain_inches", data[0].LastData.HourlyRainIn).
+		AddField("event_rain_inches", data[0].LastData.EventRainIn).
+		AddField("daily_rain_inches", data[0].LastData.DailyRainIn).
+		AddField("weekly_rain_inches", data[0].LastData.WeeklyRainIn).
+		AddField("total_rain_inches", data[0].LastData.TotalRainIn).
+		AddField("solar_radiation", data[0].LastData.SolarRadiation).
+		AddField("uv_index", data[0].LastData.UVIndex).
+		AddField("feels_like_outside", data[0].LastData.FeelsLikeOutside).
+		AddField("feels_like_inside", data[0].LastData.FeelsLikeInside).
+		AddField("dew_point_outside", data[0].LastData.DewPointOutside).
+		AddField("dew_point_inside", data[0].LastData.DewPointInside).
+		AddField("outside_battery_status", data[0].LastData.OutsideBattStatus).
+		AddField("co2_battery_status", data[0].LastData.BattCO2).
+		SetTime(time.Now())
 
+	// Write data to DB
+	err = writeAPI.WritePoint(context.Background(), p)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func main() {
@@ -256,7 +287,7 @@ func main() {
 	// mqttSubscribe(client)
 
 	// go avtechWorker(&wg)
-	go ambientWeatherStationWorker((&wg))
+	go ambientWeatherStationWorker(&wg)
 
 	wg.Wait()
 
