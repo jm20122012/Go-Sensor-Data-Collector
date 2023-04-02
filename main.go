@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
+	"example/sensor-data-collection-service/databaseutils"
 	"log"
 	"net/http"
 	"os"
@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/joho/godotenv"
+
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
 type AvtechResponseData struct {
@@ -67,30 +67,6 @@ type WeatherStationResponseData []struct {
 	} `json:"info"`
 }
 
-var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-	log.Printf("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
-}
-
-var connectHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
-	log.Println("Connected")
-}
-
-var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
-	log.Printf("Connect lost: %v", err)
-}
-
-func publish(client mqtt.Client) {
-	token := client.Publish("test", 0, false, time.Now().String())
-	token.Wait()
-}
-
-func mqttSubscribe(client mqtt.Client) {
-	topic := os.Getenv("MQTT_SUB_TOPIC")
-	token := client.Subscribe(topic, 1, nil)
-	token.Wait()
-	log.Println("MQTT Subscribed to topic: ", topic)
-}
-
 func getAvtechData(avtechUrl string) (*AvtechResponseData, error) {
 	resp, err := http.Get(avtechUrl)
 	if err != nil {
@@ -135,30 +111,13 @@ func avtechWorker(wg *sync.WaitGroup) {
 	defer wg.Done()
 	// -------------------- Assign ENV Vars -------------------- //
 	avtechUrl := os.Getenv("AVTECH_URL")
-	influxUrl := os.Getenv("INFLUXDB_URL")
-	influxToken := os.Getenv("INFLUXDB_API_TOKEN")
-	influxBucket := os.Getenv("INFLUXDB_BUCKET")
-	influxOrg := os.Getenv("INFLUXDB_ORG")
 
-	// -------------------- InfluxDB Setup -------------------- //
-	// Create a new client using an InfluxDB server base URL and an authentication token
-
-	// This is the default client instantiation.  However, due to server using
-	// a self-signed TLS certificate without using SANs, this throws an error
-	// client := influxdb2.NewClient(influxUrl, influxToken)
-
-	// To skip certificate verification, create the client like this:
-
-	// Create a new TLS configuration with certificate verification disabled
-	// This is not recommended though.  Only use for testing until a new
-	// TLS certificate can be created with SANs
-	tlsConfig := &tls.Config{InsecureSkipVerify: true}
-	influxClient := influxdb2.NewClientWithOptions(influxUrl, influxToken, influxdb2.DefaultOptions().SetTLSConfig(tlsConfig))
+	influxClient := databaseutils.CreateInfluxDBClient()
 
 	// Use blocking write client for writes to desired bucket
-	writeAPI := influxClient.WriteAPIBlocking(influxOrg, influxBucket)
+	writeAPI := influxClient.InfluxClient.WriteAPIBlocking(influxClient.InfluxOrg, influxClient.InfluxBucket)
 
-	for true {
+	for {
 		data, err := getAvtechData(avtechUrl)
 		if err != nil {
 			log.Println("Error getting Avtech data: ", err)
@@ -183,7 +142,7 @@ func avtechWorker(wg *sync.WaitGroup) {
 			panic(err)
 		}
 
-		time.Sleep(1 * time.Minute)
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -191,66 +150,53 @@ func ambientWeatherStationWorker(wg *sync.WaitGroup) {
 	defer wg.Done()
 	// -------------------- Assign ENV Vars -------------------- //
 	ambientUrl := os.Getenv("AMBIENT_FULL_URL")
-	influxUrl := os.Getenv("INFLUXDB_URL")
-	influxToken := os.Getenv("INFLUXDB_API_TOKEN")
-	influxBucket := os.Getenv("INFLUXDB_BUCKET")
-	influxOrg := os.Getenv("INFLUXDB_ORG")
 
-	// // -------------------- InfluxDB Setup -------------------- //
-	// // Create a new client using an InfluxDB server base URL and an authentication token
+	influxClient := databaseutils.CreateInfluxDBClient()
 
-	// // This is the default client instantiation.  However, due to server using
-	// // a self-signed TLS certificate without using SANs, this throws an error
-	// // client := influxdb2.NewClient(influxUrl, influxToken)
+	// Use blocking write client for writes to desired bucket
+	writeAPI := influxClient.InfluxClient.WriteAPIBlocking(influxClient.InfluxOrg, influxClient.InfluxBucket)
 
-	// // To skip certificate verification, create the client like this:
+	for {
+		data, err := getWeatherStationData(ambientUrl)
+		if err != nil {
+			log.Println("Error getting data from Ambient Weather Station: ", err)
+		}
 
-	// // Create a new TLS configuration with certificate verification disabled
-	// // This is not recommended though.  Only use for testing until a new
-	// // TLS certificate can be created with SANs
-	tlsConfig := &tls.Config{InsecureSkipVerify: true}
-	influxClient := influxdb2.NewClientWithOptions(influxUrl, influxToken, influxdb2.DefaultOptions().SetTLSConfig(tlsConfig))
+		log.Println("Ambient Weather Data: ", data)
+		log.Printf("Temp F Val: %v - Type: %T", data[0].LastData.OutsideTempF, data[0].LastData.OutsideTempF)
+		p := influxdb2.NewPointWithMeasurement("weather_sensor_data").
+			AddTag("sensor_location", "outside_weather_station").
+			AddField("outside_temperature_f", data[0].LastData.OutsideTempF).
+			AddField("inside_temperature_f", data[0].LastData.InsideTempF).
+			AddField("barometric_pressure_absolute", data[0].LastData.BarometricPressureAbsIn).
+			AddField("barometric_pressure_relative", data[0].LastData.BarometricPressureRelIn).
+			AddField("humidity", float64(data[0].LastData.OutsideHumidity)).
+			AddField("wind_direction", float64(data[0].LastData.WindDirection)).
+			AddField("wind_speed_mph", data[0].LastData.WindSpeedMPH).
+			AddField("wind_gust_mph", data[0].LastData.WindGustMPH).
+			AddField("max_daily_gust", data[0].LastData.MaxDailyGust).
+			AddField("hourly_rain_inches", data[0].LastData.HourlyRainIn).
+			AddField("event_rain_inches", data[0].LastData.EventRainIn).
+			AddField("daily_rain_inches", data[0].LastData.DailyRainIn).
+			AddField("weekly_rain_inches", data[0].LastData.WeeklyRainIn).
+			AddField("total_rain_inches", data[0].LastData.TotalRainIn).
+			AddField("solar_radiation", data[0].LastData.SolarRadiation).
+			AddField("uv_index", data[0].LastData.UVIndex).
+			AddField("feels_like_outside", data[0].LastData.FeelsLikeOutside).
+			AddField("feels_like_inside", data[0].LastData.FeelsLikeInside).
+			AddField("dew_point_outside", data[0].LastData.DewPointOutside).
+			AddField("dew_point_inside", data[0].LastData.DewPointInside).
+			AddField("outside_battery_status", data[0].LastData.OutsideBattStatus).
+			AddField("co2_battery_status", data[0].LastData.BattCO2).
+			SetTime(time.Now())
 
-	// // Use blocking write client for writes to desired bucket
-	writeAPI := influxClient.WriteAPIBlocking(influxOrg, influxBucket)
+		// Write data to DB
+		err = writeAPI.WritePoint(context.Background(), p)
+		if err != nil {
+			panic(err)
+		}
 
-	data, err := getWeatherStationData(ambientUrl)
-	if err != nil {
-		log.Println("Error getting data from Ambient Weather Station: ", err)
-	}
-
-	log.Println("Ambient Weather Data: ", data)
-	log.Printf("Temp F Val: %v - Type: %T", data[0].LastData.OutsideTempF, data[0].LastData.OutsideTempF)
-	p := influxdb2.NewPointWithMeasurement("weather_sensor_data").
-		AddTag("sensor_location", "outside_weather_station").
-		AddField("outside_temperature_f", data[0].LastData.OutsideTempF).
-		AddField("inside_temperature_f", data[0].LastData.InsideTempF).
-		AddField("barometric_pressure_absolute", data[0].LastData.BarometricPressureAbsIn).
-		AddField("barometric_pressure_relative", data[0].LastData.BarometricPressureRelIn).
-		AddField("humidity", float64(data[0].LastData.OutsideHumidity)).
-		AddField("wind_direction", float64(data[0].LastData.WindDirection)).
-		AddField("wind_speed_mph", data[0].LastData.WindSpeedMPH).
-		AddField("wind_gust_mph", data[0].LastData.WindGustMPH).
-		AddField("max_daily_gust", data[0].LastData.MaxDailyGust).
-		AddField("hourly_rain_inches", data[0].LastData.HourlyRainIn).
-		AddField("event_rain_inches", data[0].LastData.EventRainIn).
-		AddField("daily_rain_inches", data[0].LastData.DailyRainIn).
-		AddField("weekly_rain_inches", data[0].LastData.WeeklyRainIn).
-		AddField("total_rain_inches", data[0].LastData.TotalRainIn).
-		AddField("solar_radiation", data[0].LastData.SolarRadiation).
-		AddField("uv_index", data[0].LastData.UVIndex).
-		AddField("feels_like_outside", data[0].LastData.FeelsLikeOutside).
-		AddField("feels_like_inside", data[0].LastData.FeelsLikeInside).
-		AddField("dew_point_outside", data[0].LastData.DewPointOutside).
-		AddField("dew_point_inside", data[0].LastData.DewPointInside).
-		AddField("outside_battery_status", data[0].LastData.OutsideBattStatus).
-		AddField("co2_battery_status", data[0].LastData.BattCO2).
-		SetTime(time.Now())
-
-	// Write data to DB
-	err = writeAPI.WritePoint(context.Background(), p)
-	if err != nil {
-		panic(err)
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -262,31 +208,9 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 
-	// mqttBroker := os.Getenv("MQTT_BROKER_IP")
-	// mqttPort, err := strconv.Atoi(os.Getenv("MQTT_BROKER_PORT"))
-	// if err != nil {
-	// 	log.Println("Error converting MQTT port to INT")
-	// }
-
-	// // -------------------- MQTT Setup -------------------- //
-	// mqttListenerOpts := mqtt.NewClientOptions()
-	// mqttListenerOpts.AddBroker(fmt.Sprintf("mqtt://%s:%d", mqttBroker, mqttPort))
-	// mqttListenerOpts.SetClientID("goSensorDataCollector")
-	// mqttListenerOpts.SetOrderMatters(false)
-	// mqttListenerOpts.SetDefaultPublishHandler(messagePubHandler)
-	// mqttListenerOpts.OnConnect = connectHandler
-	// mqttListenerOpts.OnConnectionLost = connectLostHandler
-
-	// client := mqtt.NewClient(mqttListenerOpts)
-	// if token := client.Connect(); token.Wait() && token.Error() != nil {
-	// 	panic(token.Error())
-	// }
-
-	// mqttSubscribe(client)
-
-	// go avtechWorker(&wg)
+	go avtechWorker(&wg)
 	go ambientWeatherStationWorker(&wg)
 
 	wg.Wait()
