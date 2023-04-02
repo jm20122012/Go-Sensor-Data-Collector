@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"example/sensor-data-collection-service/databaseutils"
+	"example/sensor-data-collection-service/datastructs"
 	"log"
 	"net/http"
 	"os"
@@ -16,58 +17,7 @@ import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
-type AvtechResponseData struct {
-	Sensor []SensorData `json:"sensor"`
-}
-
-type SensorData struct {
-	Label string `json:"label"`
-	TempF string `json:"tempf"`
-	TempC string `json:"tempc"`
-	HighF string `json:"highf"`
-	HighC string `json:"highc"`
-	LowF  string `json:"lowf"`
-	LowC  string `json:"lowc"`
-}
-
-type WeatherStationResponseData []struct {
-	MacAddress string `json:"macAddress"`
-	LastData   struct {
-		DateUTC                 int     `json:"dateutc"`
-		InsideTempF             float64 `json:"tempinf"`
-		InsideHumidity          int     `json:"humidityin"`
-		BarometricPressureRelIn float64 `json:"baromrelin"`
-		BarometricPressureAbsIn float64 `json:"baromabsin"`
-		OutsideTempF            float64 `json:"tempf"`
-		OutsideBattStatus       int     `json:"battout"`
-		OutsideHumidity         int     `json:"humidity"`
-		WindDirection           int     `json:"winddir"`
-		WindSpeedMPH            float64 `json:"windspeedmph"`
-		WindGustMPH             float64 `json:"windgustmph"`
-		MaxDailyGust            float64 `json:"maxdailygust"`
-		HourlyRainIn            float64 `json:"hourlyrainin"`
-		EventRainIn             float64 `json:"eventrainin"`
-		DailyRainIn             float64 `json:"dailyrainin"`
-		WeeklyRainIn            float64 `json:"weeklyrainin"`
-		MonthlyRainIn           float64 `json:"monthlyrainin"`
-		TotalRainIn             float64 `json:"totalrainin"`
-		SolarRadiation          float64 `json:"solarradiation"`
-		UVIndex                 float64 `json:"uv"`
-		BattCO2                 int     `json:"batt_co2"`
-		FeelsLikeOutside        float64 `json:"feelsLike"`
-		DewPointOutside         float64 `json:"dewPoint"`
-		FeelsLikeInside         float64 `json:"feelsLikein"`
-		DewPointInside          float64 `json:"dewPointin"`
-		LastRain                string  `json:"lastRain"`
-		TZ                      string  `json:"tz"`
-		Date                    string  `json:"date"`
-	} `json:"lastData"`
-	Info struct {
-		Name string `json:"name"`
-	} `json:"info"`
-}
-
-func getAvtechData(avtechUrl string) (*AvtechResponseData, error) {
+func getAvtechData(avtechUrl string) (*datastructs.AvtechResponseData, error) {
 	resp, err := http.Get(avtechUrl)
 	if err != nil {
 		return nil, err
@@ -77,7 +27,7 @@ func getAvtechData(avtechUrl string) (*AvtechResponseData, error) {
 
 	defer resp.Body.Close()
 
-	var responseData AvtechResponseData
+	var responseData datastructs.AvtechResponseData
 
 	err = json.NewDecoder(resp.Body).Decode(&responseData)
 	if err != nil {
@@ -87,7 +37,7 @@ func getAvtechData(avtechUrl string) (*AvtechResponseData, error) {
 	return &responseData, nil
 }
 
-func getWeatherStationData(apiUrl string) (WeatherStationResponseData, error) {
+func getWeatherStationData(apiUrl string) (datastructs.WeatherStationResponseData, error) {
 	resp, err := http.Get(apiUrl)
 	if err != nil {
 		log.Println("Error getting Ambient Weather Station API info: ", err)
@@ -97,7 +47,7 @@ func getWeatherStationData(apiUrl string) (WeatherStationResponseData, error) {
 
 	defer resp.Body.Close()
 
-	var responseData WeatherStationResponseData
+	var responseData datastructs.WeatherStationResponseData
 
 	err = json.NewDecoder(resp.Body).Decode(&responseData)
 	if err != nil {
