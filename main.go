@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"example/sensor-data-collection-service/databaseutils"
 	"example/sensor-data-collection-service/datastructs"
+	"example/sensor-data-collection-service/mqttutils"
 	"log"
 	"net/http"
 	"os"
@@ -22,7 +23,7 @@ func getAvtechData(avtechUrl string) (*datastructs.AvtechResponseData, error) {
 	if err != nil {
 		return nil, err
 	} else {
-		log.Println("Avtech API call successful")
+		// log.Println("Avtech API call successful")
 	}
 
 	defer resp.Body.Close()
@@ -43,7 +44,7 @@ func getWeatherStationData(apiUrl string) (datastructs.WeatherStationResponseDat
 		log.Println("Error getting Ambient Weather Station API info: ", err)
 		return nil, err
 	}
-	log.Println("Ambient Weather Station API call successful")
+	// log.Println("Ambient Weather Station API call successful")
 
 	defer resp.Body.Close()
 
@@ -63,6 +64,7 @@ func avtechWorker(wg *sync.WaitGroup) {
 	avtechUrl := os.Getenv("AVTECH_URL")
 
 	influxClient := databaseutils.CreateInfluxDBClient()
+	defer influxClient.InfluxClient.Close()
 
 	// Use blocking write client for writes to desired bucket
 	writeAPI := influxClient.InfluxClient.WriteAPIBlocking(influxClient.InfluxOrg, influxClient.InfluxBucket)
@@ -73,10 +75,10 @@ func avtechWorker(wg *sync.WaitGroup) {
 			log.Println("Error getting Avtech data: ", err)
 		}
 
-		log.Println("All Data: ", data)
-		log.Println("First Index: ", data.Sensor[0])
-		log.Println("Second Index: ", data.Sensor[1])
-		log.Println("First Index Temp F: ", data.Sensor[0].TempF)
+		// log.Println("All Data: ", data)
+		// log.Println("First Index: ", data.Sensor[0])
+		// log.Println("Second Index: ", data.Sensor[1])
+		// log.Println("First Index Temp F: ", data.Sensor[0].TempF)
 
 		tempf, _ := strconv.ParseFloat(data.Sensor[0].TempF, 8)
 		tempc, _ := strconv.ParseFloat(data.Sensor[0].TempC, 8)
@@ -102,6 +104,7 @@ func ambientWeatherStationWorker(wg *sync.WaitGroup) {
 	ambientUrl := os.Getenv("AMBIENT_FULL_URL")
 
 	influxClient := databaseutils.CreateInfluxDBClient()
+	defer influxClient.InfluxClient.Close()
 
 	// Use blocking write client for writes to desired bucket
 	writeAPI := influxClient.InfluxClient.WriteAPIBlocking(influxClient.InfluxOrg, influxClient.InfluxBucket)
@@ -112,8 +115,8 @@ func ambientWeatherStationWorker(wg *sync.WaitGroup) {
 			log.Println("Error getting data from Ambient Weather Station: ", err)
 		}
 
-		log.Println("Ambient Weather Data: ", data)
-		log.Printf("Temp F Val: %v - Type: %T", data[0].LastData.OutsideTempF, data[0].LastData.OutsideTempF)
+		// log.Println("Ambient Weather Data: ", data)
+		// log.Printf("Temp F Val: %v - Type: %T", data[0].LastData.OutsideTempF, data[0].LastData.OutsideTempF)
 		p := influxdb2.NewPointWithMeasurement("weather_sensor_data").
 			AddTag("sensor_location", "outside_weather_station").
 			AddField("outside_temperature_f", data[0].LastData.OutsideTempF).
@@ -156,6 +159,9 @@ func main() {
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
+
+	mqttClient := mqttutils.CreateMqttClient()
+	mqttutils.MqttSubscribe(mqttClient)
 
 	var wg sync.WaitGroup
 	wg.Add(2)

@@ -1,5 +1,12 @@
 package datastructs
 
+type RpiSensorData struct {
+	Temp_F         float64 `json:"temp_f"`
+	Temp_C         float64 `json:"temp_c"`
+	Humidity       float64 `json:"humidity"`
+	SensorLocation string  `json:"device_id"`
+}
+
 type AvtechResponseData struct {
 	Sensor []SensorData `json:"sensor"`
 }

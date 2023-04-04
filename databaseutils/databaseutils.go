@@ -2,10 +2,7 @@ package databaseutils
 
 import (
 	"crypto/tls"
-	"log"
 	"os"
-
-	"github.com/joho/godotenv"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
@@ -19,10 +16,6 @@ type InfluxClient struct {
 }
 
 func CreateInfluxDBClient() *InfluxClient {
-	err := godotenv.Load("./.env")
-	if err != nil {
-		log.Fatal("Error - could not load ENV file", err)
-	}
 	var newClient InfluxClient
 
 	newClient.InfluxURL = os.Getenv("INFLUXDB_URL")
