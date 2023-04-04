@@ -94,7 +94,7 @@ func avtechWorker(wg *sync.WaitGroup) {
 			panic(err)
 		}
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(1 * time.Minute)
 	}
 }
 
@@ -149,7 +149,7 @@ func ambientWeatherStationWorker(wg *sync.WaitGroup) {
 			panic(err)
 		}
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(1 * time.Minute)
 	}
 }
 
