@@ -91,7 +91,7 @@ func avtechWorker(wg *sync.WaitGroup) {
 
 		err = writeAPI.WritePoint(context.Background(), p)
 		if err != nil {
-			panic(err)
+			log.Println("Error writing avtech point to database: ", err)
 		}
 
 		time.Sleep(1 * time.Minute)
@@ -146,7 +146,7 @@ func ambientWeatherStationWorker(wg *sync.WaitGroup) {
 		// Write data to DB
 		err = writeAPI.WritePoint(context.Background(), p)
 		if err != nil {
-			panic(err)
+			log.Println("Error writing weather station point to database: ", err)
 		}
 
 		time.Sleep(1 * time.Minute)
