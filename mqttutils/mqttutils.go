@@ -44,7 +44,7 @@ var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 
 	err = writeAPI.WritePoint(context.Background(), p)
 	if err != nil {
-		panic(err)
+		log.Println("Error writing temp sensor data to database: ", err)
 	}
 }
 

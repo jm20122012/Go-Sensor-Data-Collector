@@ -73,7 +73,10 @@ func avtechWorker(wg *sync.WaitGroup) {
 		data, err := getAvtechData(avtechUrl)
 		if err != nil {
 			log.Println("Error getting Avtech data: ", err)
+			log.Println("Skipping database write for this iteration")
+			continue
 		}
+		log.Println("Avtech API call successful")
 
 		// log.Println("All Data: ", data)
 		// log.Println("First Index: ", data.Sensor[0])
@@ -93,6 +96,7 @@ func avtechWorker(wg *sync.WaitGroup) {
 		if err != nil {
 			log.Println("Error writing avtech point to database: ", err)
 		}
+		log.Println("Avtech data written to database successfully")
 
 		time.Sleep(1 * time.Minute)
 	}
@@ -113,7 +117,10 @@ func ambientWeatherStationWorker(wg *sync.WaitGroup) {
 		data, err := getWeatherStationData(ambientUrl)
 		if err != nil {
 			log.Println("Error getting data from Ambient Weather Station: ", err)
+			log.Println("Skipping database write for this iteration")
+			continue
 		}
+		log.Println("Ambient weather station data retrieved successfully")
 
 		// log.Println("Ambient Weather Data: ", data)
 		// log.Printf("Temp F Val: %v - Type: %T", data[0].LastData.OutsideTempF, data[0].LastData.OutsideTempF)
@@ -148,6 +155,7 @@ func ambientWeatherStationWorker(wg *sync.WaitGroup) {
 		if err != nil {
 			log.Println("Error writing weather station point to database: ", err)
 		}
+		log.Println("Ambient weather station data written to database successfully")
 
 		time.Sleep(1 * time.Minute)
 	}
